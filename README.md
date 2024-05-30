@@ -1,6 +1,5 @@
-# `colomoto-docker`
 
-Helper command for launching the [CoLoMoTo Docker distribution](https://colomoto.github.io/colomoto-docker).
+Helper Python script for launching the [CoLoMoTo Docker distribution](https://colomoto.github.io/colomoto-docker).
 
 ## Installation
 
