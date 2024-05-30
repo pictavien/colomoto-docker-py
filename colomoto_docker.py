@@ -105,10 +105,9 @@ def main():
 
     group = parser.add_argument_group("choice of interface")
     x = group.add_mutually_exclusive_group()
-    x.add_argument('--lab', action='store_true', help="Use jupyter lab interface")
-    x.add_argument('--notebook', action='store_false', help="Use jupyter notebook interface")
-    x.add_argument("--shell", default=False, action="store_true",
-        help="Start interactive shell instead of notebook service")
+    x.add_argument('--lab', action="store_true", help="Use jupyter lab interface")
+    x.add_argument('--notebook', action="store_true", help="Use jupyter notebook interface")
+    x.add_argument("--shell", action="store_true", help="Start interactive shell instead of notebook service")
 
     group = parser.add_argument_group("docker run options")
     group.add_argument("-e", "--env", action="append",
