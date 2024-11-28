@@ -109,6 +109,9 @@ def main():
     x.add_argument('--notebook', action="store_true", help="Use jupyter notebook interface")
     x.add_argument("--shell", action="store_true", help="Start interactive shell instead of notebook service")
 
+    parser.add_argument("--for-colab", default=False, action="store_true",
+        help="Default options for connecting Google Colab")
+
     group = parser.add_argument_group("docker run options")
     group.add_argument("-e", "--env", action="append",
         help="Set environment variables")
@@ -271,36 +274,49 @@ def main():
     argv += [image]
 
     _args_jupyter = ["--no-browser", "--port", "8888",
-                        "--ip", "0.0.0.0", "--NotebookApp.token="]
+                        "--ip", "0.0.0.0"]
+    token = ""
+    if args.for_colab:
+        import uuid
+        token = "token=%s" % uuid.uuid4()
+        _args_jupyter += [
+            "--NotebookApp.%s" % token,
+            "--NotebookApp.allow_origin='https://colab.research.google.com'",
+            "--NotebookApp.port_retries=0"]
+    else:
+        _args_jupyter.append("--NotebookApp.token=")
 
-    if args.shell:
+    _args_jupyter += os.environ.get("JUPYTER_OPTS", "").split(" ")
+
+    if args.notebook or args.for_colab:
+        argv += ["jupyter-notebook"] + _args_jupyter
+    elif args.shell:
         argv += ["bash"]
     elif args.lab:
         argv += ["jupyter-lab"] + _args_jupyter
-    elif args.notebook:
-        argv += ["jupyter-notebook"] + _args_jupyter
     elif args.command:
         argv += args.command
 
     info("# %s" % " ".join(argv))
 
     if not args.shell and not args.command and not args.no_browser:
+        url = "http://%s:%s/?%s" % (container_ip, port, token)
         if os.fork() == 0:
             import threading
             import time
             def start_browser():
                 try:
-                    return webbrowser.open("http://{}:{}".format(container_ip, port))
+                    return webbrowser.open(url)
                 except:
-                    time.sleep(2)
+                    time.sleep(4)
                     info("""
-    Please open your web-browser to the following address:
+Please open your web-browser to the following address:
 
-        http://{}:{}
+    %s
 
-    """.format(container_ip, port))
+""" % url)
             started = False
-            nb_tries = 120
+            nb_tries = 10
             while not started and nb_tries:
                 nb_tries -= 1
                 time.sleep(2)
@@ -313,6 +329,10 @@ def main():
                             info("colomoto-docker: launching browser")
                             ret = start_browser()
                             info(f"colomoto-docker: launching browser returned {ret}")
+                            if ret and args.for_colab:
+                                time.sleep(4)
+                                info("\n\n")
+                                info("""==> Google Colab connect point: %s""" % url)
                             p.terminate()
                             break
                     ret = p.wait()
