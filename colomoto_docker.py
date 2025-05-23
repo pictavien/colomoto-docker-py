@@ -90,6 +90,8 @@ def main():
     parser.add_argument("-V", "--version", type=str, default="same",
         help="""Version of docker image ('latest' to fetch the latest tag;
         'same' for most recently fetched image)""")
+    parser.add_argument("--forward-jupyter-port", default=False, action="store_true",
+        help="Forward Jupyter listening port even if in shell or command mode")
     parser.add_argument("--port", default=0, type=int,
         help="Local port")
     parser.add_argument("--image", default=official_image,
@@ -225,7 +227,7 @@ def main():
         argv += ["--volume", "%s:%s" % (persistent_volume, persistent_mount)]
 
     argv += ["-w", args.workdir]
-    if not args.shell and not args.command:
+    if args.forward_jupyter_port or (not args.shell and not args.command):
         container_ip = "127.0.0.1"
         docker_machine = os.getenv("DOCKER_MACHINE_NAME")
         if docker_machine:
@@ -299,7 +301,8 @@ def main():
 
     info("# %s" % " ".join(argv))
 
-    if not args.shell and not args.command and not args.no_browser:
+    if args.forward_jupyter_port or (not args.shell and not args.command and
+                                     not args.no_browser):
         url = "http://%s:%s/?%s" % (container_ip, port, token)
         if os.fork() == 0:
             import threading
