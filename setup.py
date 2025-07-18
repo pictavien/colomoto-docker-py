@@ -18,5 +18,8 @@ setup(name="colomoto-docker",
         "console_scripts": [
             "colomoto-docker = colomoto_docker:main"
         ]
-    }
+    },
+    install_requires=[
+        "donodo"
+    ]
 )

@@ -13,6 +13,8 @@ import socket
 import subprocess
 import sys
 import webbrowser
+import donodo
+import json
 
 __version__ = "9999"
 
@@ -78,6 +80,53 @@ within the 'Docker quickstart Terminal'.""")
         error("Error: cannot connect to Docker. Make sure it is running.")
     return docker_argv
 
+def pull_image_from_doi(doi, docker_argv):
+    """
+    Download the Docker image referred by doi on Zenoto repository.
+    Before pulling the image, the function first checks if the image already
+    exists locally using the 'notes' metadata of the record.
+
+    :param doi: the DOI of the image stored on Zenodo
+    :param docker_argv: docker command as return by check_docker
+    :return: The image name with its tag in case of success and None in case of error.
+    """
+
+    try:
+        doi_record = donodo.doi_record(doi)
+    except Exception as err:
+        error(f"Error: {err}")
+        return None
+
+    if doi_record.notes is None:
+        error("Error: docker image references are missing in Zenodo image record.")
+        return None
+    refs = json.loads(doi_record.notes)
+    docker_image_name = refs.get("docker-image-name", None)
+    if docker_image_name is None:
+        error("Error: can't find docker-image-name in Zenodo image record.")
+        return None
+
+    need_pull = True
+    docker_id = refs.get("docker-id", None)
+    if docker_id is not None:
+        docker_argv = docker_argv + ["inspect", "--type", "image", docker_id]
+        try:
+            output = subprocess.check_output(docker_argv)
+            output = output.decode()
+            if not output:
+                need_pull = True
+            else:
+                imgspec = json.loads(output)[0]
+                need_pull = (imgspec["Id"] != docker_id or
+                             docker_image_name not in imgspec["RepoTags"])
+        except subprocess.CalledProcessError:
+            need_pull = True
+    if need_pull:
+        if donodo.pull(doi, doi_record) != 0:
+            return None
+    else:
+        info(f'{docker_image_name} already exists; no need to pull it.')
+    return f"{refs['docker-image-name']}"
 
 def main():
     parser = ArgumentParser()
@@ -96,6 +145,8 @@ def main():
         help="Local port")
     parser.add_argument("--image", default=official_image,
         help="Docker image")
+    parser.add_argument("--doi", default=None,
+        help="DOI of a docker image on Zenodo")
     parser.add_argument("--no-browser", default=False, action="store_true",
         help="Do not start the browser")
     parser.add_argument("--unsafe-ssl", default=False, action="store_true",
@@ -131,10 +182,20 @@ def main():
 
     info(f"colomoto-docker {__version__}")
 
-    image_tag = args.version
+    docker_argv = check_docker()
 
+    if args.doi is not None:
+        docker_image_name = pull_image_from_doi(args.doi, docker_argv)
+        if docker_image_name is None:
+            print(f"fail to download image {args.doi}", file=sys.stderr)
+            sys.exit(1)
+        docker_image_name = docker_image_name.split(":")
+        args.image = docker_image_name[0]
+        args.version = docker_image_name[1]
+
+    image_tag = args.version
     if args.version == "same":
-        output = subprocess.check_output(["docker", "images", "-f",
+        output = subprocess.check_output(docker_argv+[ "images", "-f",
                                     "reference=colomoto/colomoto-docker",
                                     "--format", "{{.Tag}}"])
         output = output.decode()
@@ -143,7 +204,6 @@ def main():
         else:
             image_tag = output.split("\n")[0]
 
-    docker_argv = check_docker()
 
     if args.version == "latest" and not args.no_update:
         import json
