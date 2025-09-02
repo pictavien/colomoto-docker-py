@@ -92,6 +92,7 @@ def pull_image_from_doi(doi, docker_argv):
     """
 
     try:
+        donodo.use_sandbox(False)
         doi_record = donodo.doi_record(doi)
     except Exception as err:
         error(f"Error: {err}")
