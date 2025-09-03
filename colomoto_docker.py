@@ -80,7 +80,7 @@ within the 'Docker quickstart Terminal'.""")
         error("Error: cannot connect to Docker. Make sure it is running.")
     return docker_argv
 
-def pull_image_from_doi(doi, docker_argv):
+def pull_image_from_doi(doi, docker_argv, sandbox=False):
     """
     Download the Docker image referred by doi on Zenoto repository.
     Before pulling the image, the function first checks if the image already
@@ -92,7 +92,7 @@ def pull_image_from_doi(doi, docker_argv):
     """
 
     try:
-        donodo.use_sandbox(False)
+        donodo.use_sandbox(sandbox)
         doi_record = donodo.doi_record(doi)
     except Exception as err:
         error(f"Error: {err}")
@@ -148,6 +148,8 @@ def main():
         help="Docker image")
     parser.add_argument("--doi", default=None,
         help="DOI of a docker image on Zenodo")
+    parser.add_argument("--zenodo-sandbox", default=False, action="store_true",
+        help="Use Zenodo sandbox")
     parser.add_argument("--no-browser", default=False, action="store_true",
         help="Do not start the browser")
     parser.add_argument("--unsafe-ssl", default=False, action="store_true",
@@ -186,7 +188,8 @@ def main():
     docker_argv = check_docker()
 
     if args.doi is not None:
-        docker_image_name = pull_image_from_doi(args.doi, docker_argv)
+        docker_image_name = pull_image_from_doi(args.doi, docker_argv,
+                                                sandbox=args.zenodo_sandbox)
         if docker_image_name is None:
             print(f"fail to download image {args.doi}", file=sys.stderr)
             sys.exit(1)
