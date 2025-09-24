@@ -12,6 +12,7 @@ import re
 import socket
 import subprocess
 import sys
+from threading import Timer
 import webbrowser
 import donodo
 import json
@@ -280,9 +281,11 @@ def main():
             info("# {}".format(" ".join(argv)))
             subprocess.call(argv)
 
-    argv = docker_argv + ["run", "-it",  "--rm"]
+    argv = docker_argv + ["run", "-t",  "--rm"]
     if args.no_selinux:
         argv += ["--security-opt", "label:disable"]
+    if args.shell or args.command:
+        argv += ["-i"]
 
     if args.bind:
         argv += ["--volume", "%s:%s" % (os.path.abspath(args.bind), args.workdir)]
@@ -365,47 +368,47 @@ def main():
 
     info("# %s" % " ".join(argv))
 
-    if args.forward_jupyter_port or (not args.shell and not args.command and
-                                     not args.no_browser):
-        url = "http://%s:%s/?%s" % (container_ip, port, token)
-        if os.fork() == 0:
-            import threading
-            import time
-            def start_browser():
-                try:
-                    return webbrowser.open(url)
-                except:
-                    time.sleep(4)
-                    info("""
-Please open your web-browser to the following address:
+    if args.shell or args.command or args.no_browser:
+        result = subprocess.run(argv)
+        return result.returncode
 
-    %s
+    url = "http://%s:%s/?%s" % (container_ip, port, token)
 
-""" % url)
-            started = False
-            nb_tries = 10
-            while not started and nb_tries:
-                nb_tries -= 1
-                time.sleep(2)
-                info("colomoto-docker: attaching to logs")
-                with subprocess.Popen(docker_argv + ["logs", "-f", name],
-                                       stdout=subprocess.PIPE) as p:
-                    while line := p.stdout.readline():
-                        if "is running at" in line.decode(errors="ignore"):
-                            started = True
-                            info("colomoto-docker: launching browser")
-                            ret = start_browser()
-                            info(f"colomoto-docker: launching browser returned {ret}")
-                            if ret and args.for_colab:
-                                time.sleep(4)
-                                info("\n\n")
-                                info("""==> Google Colab connect point: %s""" % url)
-                            p.terminate()
-                            break
-                    ret = p.wait()
-                    info(f"colomoto-docker: docker logs ended with retcode {ret}")
-            sys.exit(0)
-    os.execvp(argv[0], argv)
+    def openurl():
+        info("colomoto-docker: launching browser")
+        try:
+            ret = webbrowser.open(url)
+        except:
+            ret = False
+        if not ret:
+            info("\n\n==> Please open your web-browser at %s\n\n" % url)
+        if args.for_colab:
+            info("""\n\n==> Google Colab connect point: %s\n""" % url)
+
+    with subprocess.Popen(argv, stdout=subprocess.PIPE, encoding="utf-8") as docker_p:
+        started = False
+        try:
+            for line in docker_p.stdout:
+                sys.stdout.write(line)
+                if not started and "is running at" in line:
+                    started = True
+                    Timer(2.0, openurl).start()
+
+        except KeyboardInterrupt:
+            info("Stopping container...")
+            docker_p.terminate()
+            line = docker_p.stdout.readline()
+            if line:
+                sys.stdout.write(line)
+            docker_p.terminate()
+        except Exception as e:
+            print(e, file=sys.stderr)
+            docker_p.kill()
+        outs, err = docker_p.communicate()
+        if outs:
+            sys.stdout.write(outs)
+        if err:
+            sys.stderr.write(err)
 
 if __name__ == "__main__":
     main()
